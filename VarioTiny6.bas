@@ -88,7 +88,7 @@ Dim O_k(6) As Byte
 Dim Copyright As String * 26
 
 ' Das ist einfach nur, damit man diese schöne Zeichenkette im Flash sehen kann
-Copyright = "c( )rgeu-nedisngd. e0212"
+Copyright = "c( )rgeu-nedisngd. e0232"
 
 Dim Uhr_an As Bit
 ' Dim Count As Byte
@@ -166,7 +166,7 @@ Else
    End if
 
    ' Initialisierung, lesen wir die Kanalwerte aus dem EEPROM und berechnen die Grenzen
-   ' Wir berechnen die Toleranzbereiche der Tonfrequenzen aus dem gelernten Mittelwert +-2
+   ' Wir berechnen die Toleranzbereiche der Tonfrequenzen aus dem gelernten Mittelwert +-TOLERANZ
    Lkan = Ekan
    For Ii = 1 To Lkan
      U_k(Ii) = unter_limit(Ee_k(Ii))
@@ -206,7 +206,7 @@ Sub Sr_in(byval Zeit As Byte)
    Local I2 As Byte
 
    If Zeit > 9 Then
-      If Zeit > 110 Then Zeit = 5
+      If Zeit > 180 Then Zeit = 5 ' Untere Tonfrequenzgrenze gesenkt fuer K1+2 von Varioton
       I1 = 10
       For Li = 1 to 9
          I2 = I1 - 1
@@ -235,7 +235,7 @@ Sub Lernen()
   ' Mehr als 6 Frequenzen nehmen wir erst mal nicht
   If Ekan > 5 then Zahl = 0    ' Wenn wir schon 6 haben, brauchen wir nicht mehr lernen
 
-  If Zahl > 5 And Zahl < 128 Then
+  If Zahl > 5 And Zahl < 181 Then
      ' Der Messwert koennte eine Frequenz sein. Wir pruefen ob diese schon registriert ist
      Lkan = Ekan+1 ' naechste freie Frequenz
 
@@ -248,10 +248,10 @@ Sub Lernen()
            O_k(lkan) = Zo
            Ee_k(lkan) = Zahl
            Ekan = Lkan
-           Disable Interrupts
+           ' Disable Interrupts
            Call Beep
            ' Print "Erfolgreich gelernt, Zahl = " ; Zahl ; " Ekan = " ; Lkan
-           Enable Interrupts
+           ' Enable Interrupts
         End If
      End If
   End If
@@ -323,42 +323,55 @@ End Sub Analyze_sr
 '
 Sub Kanalimpulse (byval Xkanal As Byte)
 ' Print "Kanal = " ; Xkanal
+    Dim gerade as byte
 
-   ' Das ist erst mal der 6-Kanalmodus
-   If Ekan = 6 Then
-      If Xkanal = 5 And Neutral = 0 And Motor < 8 Then Incr Motor
-      If Xkanal = 6 And Neutral = 0 And Motor > 0 Then Decr Motor
-      If Xkanal > 0 Then Neutral = 1
-      If Xkanal = 0 Then Neutral = 0
-   End if
+   If Neutral = 0  Then
+      ' Das ist erst mal der 6-Kanalmodus
+      If Ekan = 6 Then
+         If Xkanal = 5 And Motor < 8 Then Incr Motor
+         If Xkanal = 6 And Motor > 0 Then Decr Motor
+      End if
 
-   ' Das ist der 5-Kanalmodus
-   If Ekan = 5 Then
-      If Xkanal = 5 And Neutral = 0 And Motor < 2 And Direction = 1 Then Incr Motor
-      If Xkanal = 5 And Neutral = 0 And Motor > 0 And Direction = 0 Then Decr Motor
-      If Motor = 2 Then Direction = 0
-      If Motor = 0 Then Direction = 1
-      If Xkanal > 0 Then Neutral = 1
-      If Xkanal = 0 Then Neutral = 0
+      ' Das ist der 5-Kanalmodus
+      If Ekan = 5 Then
+         If Xkanal = 5 And Motor < 2 And Direction = 1 Then Incr Motor
+         If Xkanal = 5 And Motor > 0 And Direction = 0 Then Decr Motor
+         If Motor = 2 Then Direction = 0
+         If Motor = 0 Then Direction = 1
+      End If
+
+      ' Das ist der 4-Kanalmodus
+      If Ekan = 4 Then
+         If Xkanal = 3 And Motor < 8 Then Incr Motor
+         If Xkanal = 4 And Motor > 0 Then Decr Motor
+      End if
+
+      ' Das ist der 3-Kanalmodus
+      If Ekan = 3 Then
+         If Xkanal = 3 And Motor < 2 And Direction = 1 Then Incr Motor
+         If Xkanal = 3 And Motor > 0 And Direction = 0 Then Decr Motor
+         If Motor = 2 Then Direction = 0
+         If Motor = 0 Then Direction = 1
+      End If
+
+      ' Das ist der 2-Kanalmodus
+      If Ekan = 2 Then
+         If Xkanal = 1 And Motor < 8 Then Incr Motor
+         If Xkanal = 2 And Motor > 0 Then Decr Motor
+      End if
+
+      ' Das ist der 1-Kanalmodus
+      If Ekan = 1 Then
+         If Xkanal = 1 And Motor < 2 And Direction = 1 Then Incr Motor
+         If Xkanal = 1 And Motor > 0 And Direction = 0 Then Decr Motor
+         If Motor = 2 Then Direction = 0
+         If Motor = 0 Then Direction = 1
+      End If
    End If
 
-   ' Das ist der 4-Kanalmodus
-   If Ekan = 4 Then
-      If Xkanal = 3 And Neutral = 0 And Motor < 8 Then Incr Motor
-      If Xkanal = 4 And Neutral = 0 And Motor > 0 Then Decr Motor
-      If Xkanal > 0 Then Neutral = 1
-      If Xkanal = 0 Then Neutral = 0
-   End if
-
-   ' Das ist der 3-Kanalmodus
-   If Ekan = 3 Then
-      If Xkanal = 3 And Neutral = 0 And Motor < 2 And Direction = 1 Then Incr Motor
-      If Xkanal = 3 And Neutral = 0 And Motor > 0 And Direction = 0 Then Decr Motor
-      If Motor = 2 Then Direction = 0
-      If Motor = 0 Then Direction = 1
-      If Xkanal > 0 Then Neutral = 1
-      If Xkanal = 0 Then Neutral = 0
-   End If
+   ' Entprellen, Motorfunktion nur, nachdem zwischendurch Pause war
+   If Xkanal > 0 Then Neutral = 1
+   If Xkanal = 0 Then Neutral = 0
 
    ' Normale Behandlung
    ' Seite B2
@@ -384,11 +397,13 @@ Sub Kanalimpulse (byval Xkanal As Byte)
    Portb.3 = 0
 
    ' Die Motordrossel hat eine eigene Logik
+   ' Be Gerader Kanalanzahl 8 Stufen. sonst Schaltstern
 
-   If Ekan = 4 Or Ekan = 6 Then
+   Gerade = Ekan AND 1
+
+   If Gerade = 0 Then
       Uu = Motor * 125
-   End If
-   If Ekan = 3 Or Ekan = 5 Then
+   Else
       Uu = Motor * 500
    End If
 
@@ -460,7 +475,7 @@ Sub Beep()
      Waitus 1000
      Portb.3 = 0
      ' Portb.4 = 0
-     Waitms 20
+     Waitus 19000
   Next
 
   For Li = 1 To 20
@@ -469,11 +484,10 @@ Sub Beep()
      Waitus 1500
      Portb.3 = 0
      ' Portb.4 = 0
-     Waitms 20
+     Waitus 18500
   Next
   ' Enable Interrupts                             'Interrupts global zulassen
 End Sub Beep
 
 
 END
-
