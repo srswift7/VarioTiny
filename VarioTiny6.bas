@@ -47,7 +47,7 @@ Declare Sub Beep()                               ' Kurz mit einem Servo wedeln
 Declare Sub Lernen()
 Declare Sub Analyze_sr()
 Declare Sub Sr_in(byval Zeit As Byte)
-Declare Sub Kanalimpulse (byval Xkanal As Byte)
+Declare Sub Kanalimpulse()
 
 Declare Function ober_limit(byval Zahl As Byte) As Byte
 Declare Function unter_limit(byval Zahl As Byte) As Byte
@@ -58,13 +58,16 @@ Dim Zu As Byte
 Dim Zo As Byte
 Dim Lzahl As Byte
 
-Dim Sregister(10) As Byte
-Dim Kregister(5) As Byte
+Dim Sregister(10) As Byte  ' Hier laufen die gemessenen Tonfrequenzen ein (Zeit zwischen 2 Flanken
+Dim Kregister(10) As Byte  ' Hier sind die "gematchten" letzten 10 Kanäle
+
+Dim Decision(6) As Byte
 
 ' Dim Kanal As Byte
 
 Dim Semaph As Bit
 Dim Neutral As Bit
+Dim Ncount As Byte
 Dim Direction As Bit
 Dim Motor As Byte
 
@@ -269,149 +272,172 @@ Function match(byval Zahl As Byte) As Byte
 End Function match
 
 
-' Prueft die letzten 5 Messwerte, matcht gegen die Kanalfrequenzen und ruft die Kanalimpulse
+' Prueft die Messwerte, aus dem Schieberegister und matcht gegen die Kanalfrequenzen und ruft die Kanalimpulse
 Sub Analyze_sr()
   Local Count As Byte
   Local Li As Byte
-  Local Ktry As Byte
   Local Xkanal As Byte
+  Local Lneutral As Byte
 
-  ' Welche Kanaele hatten wir bei den letzten 5 Versuchen gefunden?
+  ' Welche Kanaele hatten wir bei den letzten 10 Versuchen gefunden?
   ' Kregister(count) = 0
-  ' Die Messdaten sind im Schieberegister, wir matchen die letzten 5 gegen die Kanalfrequenzen
+  ' Die Messdaten sind im Schieberegister, wir matchen sie gegen die Kanalfrequenzen
   ' in das Kregister
   ' vorher koennte erst noch eine Kurvenglaettung erfolgen
-  For Li = 1 To 5
+  For Li = 1 To 10
      Kregister(Li) = match(Sregister(Li))
   Next
 
-  Xkanal = 0
+  ' Entprellen, Motorfunktion nur, nachdem zwischendurch Pause war
+  Lneutral = 0
 
-  ' Wir sollten in den letzten 5 Messungen wenigstens 4 treffer haben
-  ' Erster Versuch
-  Ktry = Kregister(1)
-  Count = 1
+  For Xkanal = 1 To 6  ' Schleife über die möglichen Kanalfrequenzen
 
-  For Li = 2 To 5
-     If Ktry = Kregister(Li) Then Incr Count
+     Count = 0
+     For Li = 1 to 10
+        If Kregister(Li) = Xkanal then
+           incr Count
+        End if
+     Next Li
+     If Count > 3 then ' Wenn innerhalb der letzten 200ms wenigstens 4 mal die gleiche Frequenz gemessen wurde, gilt der Tonkanal als aktiv
+       Decision(Xkanal) = 1
+       Lneutral = 1
+     Else
+       Decision(Xkanal) = 0
+     End If
   Next
 
-  If Count < 4  Then
-     ' die letzte Messung koennte unsauber gewesen sein
-     ' Zweiter Versuch
-     Ktry = Kregister(2)
-     Count = 1
+  Call Kanalimpulse ()
 
-     For Li = 3 To 5
-       If Ktry = Kregister(Li) Then Incr Count
-     Next
+  ' Neutral wird auf 1 gesetzt falls ein Kanal erkannt wurde, sonst 0
+  ' Neutral = Lneutral
 
-     If Ktry = Kregister(1) Then incr Count
-  End if
+  If Lneutral = 0 then
+     incr ncount
+  else
+      ncount = 0
+  end if
 
-  If Count > 3 Then Xkanal = Ktry
-
-  Call Kanalimpulse (Xkanal)
+  If ncount > 4 then
+     Neutral = 0
+     ncount = 5
+  end if
 
 End Sub Analyze_sr
 
 
 ' so und hier müssen wir jetzt noch die Kanalimpulse stricken
 ' Xkanal enthaelt eine Zahl zwischen 0 und 6, genau, den Tonfrequenzkanal
+' Lval sagt, ob der Kanal Aktiv ist, oder nicht
 '
-' Die Motordrossel als nichtneutralisierender Kanal in 5 Stufen
+' Die Motordrossel als nichtneutralisierender Kanal in 8 Stufen oder als Schaltkanal
 '
-Sub Kanalimpulse (byval Xkanal As Byte)
-' Print "Kanal = " ; Xkanal
-    Dim gerade as byte
+Sub Kanalimpulse ()
+   Dim gerade as byte
 
-   If Neutral = 0  Then
-      ' Das ist erst mal der 6-Kanalmodus
-      If Ekan = 6 Then
-         If Xkanal = 5 And Motor < 8 Then Incr Motor
-         If Xkanal = 6 And Motor > 0 Then Decr Motor
-      End if
+   ' Die Steuerung der Motordrossel / des Schaltsterns
+   If Neutral = 0 Then
+         ' Das ist erst mal der 6-Kanalmodus
+         If Ekan = 6 Then
+            If Decision(5) = 1 And Motor < 8 Then Incr Motor
+            If Decision(6) = 1 And Motor > 0 Then Decr Motor
+         End if
 
-      ' Das ist der 5-Kanalmodus
-      If Ekan = 5 Then
-         If Xkanal = 5 And Motor < 2 And Direction = 1 Then Incr Motor
-         If Xkanal = 5 And Motor > 0 And Direction = 0 Then Decr Motor
-         If Motor = 2 Then Direction = 0
-         If Motor = 0 Then Direction = 1
-      End If
+         ' Das ist der 5-Kanalmodus
+         If Ekan = 5 Then
+            If Decision(5) = 1 And Motor < 2 And Direction = 1 Then Incr Motor
+            If Decision(5) = 1 And Motor > 0 And Direction = 0 Then Decr Motor
+            If Motor = 2 Then Direction = 0
+            If Motor = 0 Then Direction = 1
+         End If
 
-      ' Das ist der 4-Kanalmodus
-      If Ekan = 4 Then
-         If Xkanal = 3 And Motor < 8 Then Incr Motor
-         If Xkanal = 4 And Motor > 0 Then Decr Motor
-      End if
+         ' Das ist der 4-Kanalmodus
+         If Ekan = 4 Then
+            If Decision(3) = 1 And Motor < 8 Then Incr Motor
+            If Decision(4) = 1 And Motor > 0 Then Decr Motor
+         End if
 
-      ' Das ist der 3-Kanalmodus
-      If Ekan = 3 Then
-         If Xkanal = 3 And Motor < 2 And Direction = 1 Then Incr Motor
-         If Xkanal = 3 And Motor > 0 And Direction = 0 Then Decr Motor
-         If Motor = 2 Then Direction = 0
-         If Motor = 0 Then Direction = 1
-      End If
+         ' Das ist der 3-Kanalmodus
+         If Ekan = 3 Then
+            If Decision(3) = 1 And Motor < 2 And Direction = 1 Then Incr Motor
+            If Decision(3) = 1 And Motor > 0 And Direction = 0 Then Decr Motor
+            If Motor = 2 Then Direction = 0
+            If Motor = 0 Then Direction = 1
+         End If
 
-      ' Das ist der 2-Kanalmodus
-      If Ekan = 2 Then
-         If Xkanal = 1 And Motor < 8 Then Incr Motor
-         If Xkanal = 2 And Motor > 0 Then Decr Motor
-      End if
+         ' Das ist der 2-Kanalmodus
+         If Ekan = 2 Then
+            If Decision(1) = 1 And Motor < 8 Then Incr Motor
+            If Decision(2) = 1 And Motor > 0 Then Decr Motor
+         End if
 
-      ' Das ist der 1-Kanalmodus
-      If Ekan = 1 Then
-         If Xkanal = 1 And Motor < 2 And Direction = 1 Then Incr Motor
-         If Xkanal = 1 And Motor > 0 And Direction = 0 Then Decr Motor
-         If Motor = 2 Then Direction = 0
-         If Motor = 0 Then Direction = 1
-      End If
+         ' Das ist der 1-Kanalmodus
+         If Ekan = 1 Then
+            If Decision(1) = 1 And Motor < 2 And Direction = 1 Then Incr Motor
+            If Decision(1) = 1 And Motor > 0 And Direction = 0 Then Decr Motor
+            If Motor = 2 Then Direction = 0
+            If Motor = 0 Then Direction = 1
+         End If
+         Neutral = 1
    End If
 
-   ' Entprellen, Motorfunktion nur, nachdem zwischendurch Pause war
-   If Xkanal > 0 Then Neutral = 1
-   If Xkanal = 0 Then Neutral = 0
-
-   ' Normale Behandlung
+   ' Jetzt bauen wir die Kanalimpulse
    ' Seite B2
    ' Hoehe B3
    ' Motor B4
 
-   ' Ein Kanalimpuls für Seite wird erzeugt
-   Uu = 1500
-   If Xkanal = 1 Then Uu = 1000
-   If Xkanal = 2 Then Uu = 2000
+   Uu = 0
+   For Ii = 1 to 6  ' Wir erzeugen 3 Kanalimpulse, auch wenn wir weniger Kanäle haben
+      Gerade = Ii AND 1
+      If Decision(Ii) = 1 then
+         If Gerade = 1 then
+            Uu = 1000
+         Else
+            Uu = 2000
+         End If
+      End If
 
-   Portb.2 = 1
-   Waitus Uu
-   Portb.2 = 0
+      ' Ein Kanalimpuls für Seite wird erzeugt
+      If Ii  = 2 then
+         If Uu = 0 then
+            Uu = 1500
+         End if
+         Portb.2 = 1
+         Waitus Uu
+         Portb.2 = 0
+         Uu = 0
+      End If
 
-   ' Ein Kanalimpuls für Höhe wird erzeugt
-   Uu = 1500
-   If Xkanal = 3 Then Uu = 1000
-   If Xkanal = 4 Then Uu = 2000
+      ' Ein Kanalimpuls für Höhe wird erzeugt
+      If Ii= 4 then
+         If Uu = 0 then
+            Uu = 1500
+         end if
+         Portb.3 = 1
+         Waitus Uu
+         Portb.3 = 0
+         Uu = 0
+      End If
 
-   Portb.3 = 1
-   Waitus Uu
-   Portb.3 = 0
+      ' Die Motordrossel hat eine eigene Logik
+      ' Be Gerader Kanalanzahl 8 Stufen. sonst Schaltstern
 
-   ' Die Motordrossel hat eine eigene Logik
-   ' Be Gerader Kanalanzahl 8 Stufen. sonst Schaltstern
+      If Ii = 6 then ' B4 ist immer die Motordrossel
+         Gerade = Ekan AND 1
 
-   Gerade = Ekan AND 1
+         If Gerade = 0 Then
+            Uu = Motor * 125
+         Else
+            Uu = Motor * 500
+         End If
 
-   If Gerade = 0 Then
-      Uu = Motor * 125
-   Else
-      Uu = Motor * 500
-   End If
+         Uu = Uu + 1000
 
-   Uu = Uu + 1000
-
-   Portb.4 = 1
-   Waitus Uu
-   Portb.4 = 0
+         Portb.4 = 1
+         Waitus Uu
+         Portb.4 = 0
+      End If
+   Next Ii
 
 End Sub Kanalimpulse
 
