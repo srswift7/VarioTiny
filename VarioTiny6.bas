@@ -39,7 +39,8 @@ $regfile = "ATtiny45.DAT"                        ' ATTiny / ATmega8-Deklaratione
 $crystal = 8000000                               ' Kein Quarz, 8MHz
 
 
-Const TOLERANZ = 4
+Const TOLERANZ = 3
+
 
 Declare Sub Flanke()                             ' Callback fuer Frequenzmessung (Timer0, ACI)
 Declare Sub Ms20_loop()                          ' Callback fuer 20ms Loop, (Timer 1, ueberlauf)
@@ -56,7 +57,6 @@ Declare Function match(byval Zahl As Byte) As Byte
 Dim Zahl As Byte
 Dim Zu As Byte
 Dim Zo As Byte
-Dim Lzahl As Byte
 
 Dim Sregister(10) As Byte  ' Hier laufen die gemessenen Tonfrequenzen ein (Zeit zwischen 2 Flanken
 Dim Kregister(10) As Byte  ' Hier sind die "gematchten" letzten 10 Kanäle
@@ -104,8 +104,8 @@ Acsr = &B01001011                                ' Interne Referenz
 
 ' Nein, wir zählen nicht, wir stoppen die Zeit von Flanke zu Flanke. Dazu nehmen wir den Timer0
 
+' Timer zum stoppen der Zeit zwischen 2 Flanken
 On Aci Flanke
-
 Config Timer0 = Timer , Prescale = 64            ' Timer-Takt ist Quarz/64,
                                                  ' bei 8MHz Takt hat der Timer dann 125 kHz
                                                  ' Das bedeutet 12.5 ticks bei 10 kHz Tonfrequenz
@@ -132,7 +132,6 @@ Waitms 1000
 
 Lernmod = 0                                      ' Den Lernmodus erkennen wir (nachher) an einer Drahtbrücke
 Zahl = 0
-Lzahl = 0
 ' Kanal = 0
 
 ' Am Anfang prüfen wir mit Pin B2, ob wir im Programmiermodus sind
@@ -157,17 +156,38 @@ Else
    Portb.2 = 0                                    ' Low B2
 
    ' Basisvoreinstellung, der Chip ist noch nicht belernt
-   ' Die Pilot4 hat hier die folgenden Werte:
-   ' 68, 47, 95, 32
+   ' Geteste wurde mit folgenden Sendern:
 
    If Ekan < 1 Or Ekan > 6 Then                   ' Es wurde noch nicht gelernt, Voreinstellung in den EEPROM
-     Ee_k(1) = 68
-     Ee_k(2) = 47
-     Ee_k(3) = 95
-     Ee_k(4) = 32
+     ' Pilot-4
+     Ee_k(1) = 68       ' Pilot-4 K1
+     Ee_k(2) = 47       ' Pilot-4 K2
+     Ee_k(3) = 95       ' Pilot-4 K3
+     Ee_k(4) = 32       ' Pilot-4 K4
      Ekan = 4
-   End if
 
+     ' Varioton S (4-Kanal)
+     ' Ee_k(1) = 155   ' Varioton K1
+     ' Ee_k(2) = 115   ' Varioton K2
+     ' Ee_k(3) = 75    ' Varioton K3
+     ' Ee_k(4) = 55    ' Varioton K4
+     ' Ekan = 4
+
+     ' Mecatron - 3
+     ' Ee_k(1) = 56   ' Mecatron K1
+     ' Ee_k(2) = 46   ' Mecatron K2
+     ' Ee_k(3) = 38   ' Mecatron K3
+     ' Ekan = 3
+
+     ' Junior-5
+     ' Ee_k(1) = 34   ' Junior-5 K1
+     ' Ee_k(2) = 42   ' Junior-5 K2
+     ' Ee_k(3) = 51   ' Junior-5 K3
+     ' Ee_k(4) = 63   ' Junior-5 K4
+     ' Ee_k(5) = 82   ' Junior-5 K5
+     ' Ekan = 5
+   End If
+   
    ' Initialisierung, lesen wir die Kanalwerte aus dem EEPROM und berechnen die Grenzen
    ' Wir berechnen die Toleranzbereiche der Tonfrequenzen aus dem gelernten Mittelwert +-TOLERANZ
    Lkan = Ekan
@@ -201,23 +221,19 @@ Loop
 
 END
 
-' Auswerten der gemessenen Zeit - Filtern der groben Ausreisser
-' Eintragen ins Schieberegister
+' Eintragen gemessenen Zeit ins Schieberegister
 Sub Sr_in(byval Zeit As Byte)
    Local Li As Byte
    Local I1 As Byte
    Local I2 As Byte
 
-   If Zeit > 9 Then
-      If Zeit > 180 Then Zeit = 5 ' Untere Tonfrequenzgrenze gesenkt fuer K1+2 von Varioton
-      I1 = 10
-      For Li = 1 to 9
-         I2 = I1 - 1
-         Sregister(I1) = Sregister (I2)
-         I1 = I2
-      next Li
-      Sregister(1) = Zeit
-   End If
+   I1 = 10
+   For Li = 1 to 9
+       I2 = I1 - 1
+       Sregister(I1) = Sregister (I2)
+       I1 = I2
+   next Li
+   Sregister(1) = Zeit
 End Sub Sr_in
 
 
